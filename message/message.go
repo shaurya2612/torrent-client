@@ -24,6 +24,22 @@ type Message struct {
 	Payload []byte
 }
 
+// FormatRequest creates a REQUEST message
+func FormatRequest(index, begin, length int) *Message {
+	payload := make([]byte, 12)
+	binary.BigEndian.PutUint32(payload[0:4], uint32(index))
+	binary.BigEndian.PutUint32(payload[4:8], uint32(begin))
+	binary.BigEndian.PutUint32(payload[8:12], uint32(length))
+	return &Message{ID: MsgRequest, Payload: payload}
+}
+
+// FormatHave creates a HAVE message
+func FormatHave(index int) *Message {
+	payload := make([]byte, 4)
+	binary.BigEndian.PutUint32(payload, uint32(index))
+	return &Message{ID: MsgHave, Payload: payload}
+}
+
 // Serialize serializes a message into a buffer of the form
 // <length prefix><message ID><payload>
 // Interprets `nil` as a keep-alive message

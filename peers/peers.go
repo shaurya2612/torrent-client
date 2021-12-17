@@ -22,10 +22,10 @@ func Unmarshal(peersBin []byte) ([]Peer, error) {
 	idx := 0
 	for idx < len(peersBin) {
 		var ip net.IP
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 4; i++ {
 			ip = append(ip, peersBin[idx+i])
 		}
-		idx += 6
+		idx += 4
 
 		var port uint16 = binary.BigEndian.Uint16(peersBin[idx : idx+2])
 		idx += 2
