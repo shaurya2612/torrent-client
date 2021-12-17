@@ -22,6 +22,15 @@ func (h *Handshake) Serialize() []byte {
 	return buf
 }
 
+// New creates a new handshake with the standard pstr
+func New(infoHash, peerID [20]byte) *Handshake {
+	return &Handshake{
+		Pstr:     "BitTorrent protocol",
+		InfoHash: infoHash,
+		PeerID:   peerID,
+	}
+}
+
 func Read(r io.Reader) (*Handshake, error) {
 	lengthBuf := make([]byte, 1)
 	_, err := io.ReadFull(r, lengthBuf)
