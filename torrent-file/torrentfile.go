@@ -3,9 +3,12 @@ package torrentfile
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
+	"math/rand"
 	"os"
 
 	"github.com/jackpal/bencode-go"
+	"github.com/shaurya2612/torrent-client/p2p"
 )
 
 type bencodeInfo struct {
@@ -20,6 +23,9 @@ type bencodeTorrent struct {
 	Info     bencodeInfo `bencode:"info"`
 }
 
+// Port to listen on
+const Port uint16 = 6881
+
 type TorrentFile struct {
 	Announce    string
 	InfoHash    [20]byte
@@ -27,6 +33,45 @@ type TorrentFile struct {
 	PieceLength int
 	Length      int
 	Name        string
+}
+
+// DownloadToFile downloads a torrent and writes it to a file
+func (t *TorrentFile) DownloadToFile(path string) error {
+	var peerID [20]byte
+	_, err := rand.Read(peerID[:])
+	if err != nil {
+		return err
+	}
+
+	peers, err := t.requestPeers(peerID, Port)
+	if err != nil {
+		return err
+	}
+
+	torrent := p2p.Torrent{
+		Peers:       peers,
+		PeerID:      peerID,
+		InfoHash:    t.InfoHash,
+		PieceHashes: t.PieceHashes,
+		PieceLength: t.PieceLength,
+		Length:      t.Length,
+		Name:        t.Name,
+	}
+	buf, err := torrent.Download()
+	if err != nil {
+		return err
+	}
+
+	outFile, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	_, err = outFile.Write(buf)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Open parses a torrent file
@@ -54,28 +99,38 @@ func (i *bencodeInfo) hash() ([20]byte, error) {
 	return h, nil
 }
 
-func (bto bencodeTorrent) toTorrentFile() (TorrentFile, error) {
+func (i *bencodeInfo) splitPieceHashes() ([][20]byte, error) {
+	hashLen := 20 // Length of SHA-1 hash
+	buf := []byte(i.Pieces)
+	if len(buf)%hashLen != 0 {
+		err := fmt.Errorf("Received malformed pieces of length %d", len(buf))
+		return nil, err
+	}
+	numHashes := len(buf) / hashLen
+	hashes := make([][20]byte, numHashes)
+
+	for i := 0; i < numHashes; i++ {
+		copy(hashes[i][:], buf[i*hashLen:(i+1)*hashLen])
+	}
+	return hashes, nil
+}
+
+func (bto *bencodeTorrent) toTorrentFile() (TorrentFile, error) {
 	infoHash, err := bto.Info.hash()
 	if err != nil {
 		return TorrentFile{}, err
 	}
-
-	if len(bto.Info.Pieces)%20 != 0 {
-		panic("Hash not divisible by 20")
+	pieceHashes, err := bto.Info.splitPieceHashes()
+	if err != nil {
+		return TorrentFile{}, err
 	}
-	pieceHashes := make([][20]byte, 0)
-	idx := 0
-	for i := 0; i <= len(bto.Info.Pieces); i++ {
-		var arr [20]byte
-
-		for j := 0; j < 20; j++ {
-			arr[j] = bto.Info.Pieces[idx+j]
-		}
-
-		idx += 20
-		pieceHashes = append(pieceHashes, arr)
+	t := TorrentFile{
+		Announce:    bto.Announce,
+		InfoHash:    infoHash,
+		PieceHashes: pieceHashes,
+		PieceLength: bto.Info.PieceLength,
+		Length:      bto.Info.Length,
+		Name:        bto.Info.Name,
 	}
-
-	tof := TorrentFile{Announce: bto.Announce, Length: bto.Info.Length, Name: bto.Info.Name, PieceLength: bto.Info.PieceLength, PieceHashes: pieceHashes, InfoHash: infoHash}
-	return tof, nil
+	return t, nil
 }
